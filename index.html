@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Seep Analytics Tracker</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root { --primary: #1a1a2e; --accent: #16213e; --highlight: #4db8ff; --danger: #ff4d4d; }
+        body { font-family: 'Segoe UI', sans-serif; background: #0f3460; color: white; margin: 0; padding: 15px; }
+        .container { max-width: 600px; margin: auto; background: var(--primary); padding: 20px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        
+        .setup-section, .input-section { background: var(--accent); padding: 15px; border-radius: 10px; margin-bottom: 20px; }
+        input { background: #0f3460; border: 1px solid #444; color: white; padding: 10px; border-radius: 5px; width: calc(50% - 25px); margin-bottom: 10px; font-size: 14px; }
+        input:focus { border-color: var(--highlight); outline: none; }
+        
+        .chart-container { background: white; border-radius: 10px; padding: 10px; margin-top: 20px; height: 250px; }
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 13px; }
+        th { border-bottom: 2px solid var(--highlight); padding: 10px; text-align: left; }
+        td { padding: 10px; border-bottom: 1px solid #333; }
+        
+        .btn-add { background: var(--highlight); color: var(--primary); width: 100%; padding: 12px; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; }
+        .btn-secondary { background: transparent; color: #aaa; border: 1px solid #444; padding: 8px; border-radius: 5px; margin-top: 10px; cursor: pointer; font-size: 12px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2 style="text-align:center; color: var(--highlight);">Seep Analytics Pro</h2>
+
+    <div class="setup-section">
+        <label style="font-size: 12px;">खिलाड़ियों/टीम के नाम:</label><br>
+        <input type="text" id="p1Name" placeholder="Player/Team 1" onchange="updateChartNames()">
+        <input type="text" id="p2Name" placeholder="Player/Team 2" onchange="updateChartNames()">
+    </div>
+
+    <div class="input-section">
+        <div style="display:flex; justify-content: space-between;">
+            <div>
+                <label id="labelA" style="font-size:12px; color:var(--highlight)">Team 1 अंक</label><br>
+                <input type="number" id="scoreA" placeholder="0-100">
+                <input type="number" id="seepA" placeholder="सीप" style="width: 40px;">
+            </div>
+            <div>
+                <label id="labelB" style="font-size:12px; color:var(--highlight)">Team 2 अंक</label><br>
+                <input type="number" id="scoreB" placeholder="0-100">
+                <input type="number" id="seepB" placeholder="सीप" style="width: 40px;">
+            </div>
+        </div>
+        <button class="btn-add" onclick="addRound()">Add Round & Update Data</button>
+    </div>
+
+    <div class="chart-container">
+        <canvas id="scoreChart"></canvas>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Rd</th>
+                <th id="th1">Team 1</th>
+                <th id="th2">Team 2</th>
+            </tr>
+        </thead>
+        <tbody id="ledgerBody"></tbody>
+    </table>
+
+    <div style="display: flex; gap: 10px;">
+        <button class="btn-secondary" onclick="undoLast()">Undo Last</button>
+        <button class="btn-secondary" style="color:var(--danger)" onclick="resetGame()">Reset Game</button>
+    </div>
+</div>
+
+<script>
+    let rounds = JSON.parse(localStorage.getItem('seepAnalytics')) || [];
+    let p1 = localStorage.getItem('p1') || "Team 1";
+    let p2 = localStorage.getItem('p2') || "Team 2";
+
+    const ctx = document.getElementById('scoreChart').getContext('2d');
+    let chart;
+
+    function initChart() {
+        chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: rounds.map((_, i) => `Rd ${i+1}`),
+                datasets: [
+                    { label: p1, data: [], borderColor: '#4db8ff', tension: 0.3, fill: false },
+                    { label: p2, data: [], borderColor: '#ff4d4d', tension: 0.3, fill: false }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: { y: { beginAtZero: true } }
+            }
+        });
+    }
+
+    function updateChartNames() {
+        p1 = document.getElementById('p1Name').value || "Team 1";
+        p2 = document.getElementById('p2Name').value || "Team 2";
+        localStorage.setItem('p1', p1);
+        localStorage.setItem('p2', p2);
+        
+        document.getElementById('th1').innerText = p1;
+        document.getElementById('th2').innerText = p2;
+        document.getElementById('labelA').innerText = p1;
+        document.getElementById('labelB').innerText = p2;
+        
+        chart.data.datasets[0].label = p1;
+        chart.data.datasets[1].label = p2;
+        chart.update();
+    }
+
+    function addRound() {
+        const a = parseInt(document.getElementById('scoreA').value) || 0;
+        const b = parseInt(document.getElementById('scoreB').value) || 0;
+        const sA = parseInt(document.getElementById('seepA').value) || 0;
+        const sB = parseInt(document.getElementById('seepB').value) || 0;
+
+        if (a + b !== 100 && (a+b > 0)) {
+            if(!confirm("योग 100 नहीं है। जारी रखें?")) return;
+        }
+
+        rounds.push({ a: a + (sA * 50), b: b + (sB * 50) });
+        saveAndRefresh();
+        clearInputs();
+    }
+
+    function saveAndRefresh() {
+        localStorage.setItem('seepAnalytics', JSON.stringify(rounds));
+        const body = document.getElementById('ledgerBody');
+        body.innerHTML = '';
+        
+        let cumulativeA = 0, cumulativeB = 0;
+        let dataA = [], dataB = [];
+
+        rounds.forEach((r, i) => {
+            cumulativeA += r.a;
+            cumulativeB += r.b;
+            dataA.push(cumulativeA);
+            dataB.push(cumulativeB);
+            
+            body.innerHTML += `<tr><td>${i+1}</td><td>${r.a} (Σ ${cumulativeA})</td><td>${r.b} (Σ ${cumulativeB})</td></tr>`;
+        });
+
+        chart.data.labels = rounds.map((_, i) => `Rd ${i+1}`);
+        chart.data.datasets[0].data = dataA;
+        chart.data.datasets[1].data = dataB;
+        chart.update();
+    }
+
+    function undoLast() {
+        rounds.pop();
+        saveAndRefresh();
+    }
+
+    function clearInputs() {
+        ['scoreA', 'scoreB', 'seepA', 'seepB'].forEach(id => document.getElementById(id).value = '');
+    }
+
+    function resetGame() {
+        if(confirm("रीसेट करें?")) {
+            rounds = [];
+            saveAndRefresh();
+        }
+    }
+
+    // On Load
+    document.getElementById('p1Name').value = p1;
+    document.getElementById('p2Name').value = p2;
+    initChart();
+    updateChartNames();
+    saveAndRefresh();
+</script>
+
+</body>
+</html>
